@@ -117,4 +117,7 @@ const interviewReportSchema = new mongoose.Schema({
     ref: "User"
   }
 }, { timestamps: true });
-module.exports = interviewReportSchema;
+module.exports = mongoose.model(
+    "InterviewReport",
+    interviewReportSchema
+);
