@@ -1,4 +1,4 @@
-import {useAuth} from '../hooks/useAuth.jsx'
+import {useAuth} from '../hooks/useAuth.js'
 import {Navigate} from 'react-router-dom'
 import React from 'react'
 

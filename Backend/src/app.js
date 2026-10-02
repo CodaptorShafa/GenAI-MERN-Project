@@ -10,10 +10,12 @@ app.use(cors({
 }));
 /*Required Routes*/
 const authRoutes = require('./routes/auth.routes');
+const interviewRouter= require('./routes/interview.route')
 /**
  * @route POST /api/auth/register
  * @desc Register a new user
  * @access Public
  */
 app.use('/api/auth', authRoutes);
+app.use('/api/interview',interviewRouter)
 module.exports = app;
