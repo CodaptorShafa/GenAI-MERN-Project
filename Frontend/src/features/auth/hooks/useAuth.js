@@ -5,11 +5,11 @@ export const useAuth = () => {
     const context= useContext(AuthContext)
     const {user,setUser,loading,setLoading} = context
 
-    const handleLogin = async (email,password) => {
+    const handleLogin = async ({email,password}) => {
 
         setLoading(true)
         try {
-       const data =  await LoginUser({email,password})
+       const data =  await loginUser({email,password})
        setUser(data.user)
         }catch (error) {
             console.error('Error logging in user:', error);

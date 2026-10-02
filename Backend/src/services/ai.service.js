@@ -1,116 +1,636 @@
-const { GoogleGenAI } = require("@google/genai")
-const { z } = require("zod")
-const { zodToJsonSchema } = require("zod-to-json-schema")
-const puppeteer = require("puppeteer")
+const { GoogleGenAI } = require("@google/genai");
+const { z } = require("zod");
+const puppeteer = require("puppeteer");
 
 const ai = new GoogleGenAI({
     apiKey: process.env.GOOGLE_GENAI_API_KEY
-})
+});
 
+/*
+|--------------------------------------------------------------------------
+| ZOD SCHEMA
+|--------------------------------------------------------------------------
+*/
 
 const interviewReportSchema = z.object({
-    matchScore: z.number().describe("A score between 0 and 100 indicating how well the candidate's profile matches the job describe"),
-    technicalQuestions: z.array(z.object({
-        question: z.string().describe("The technical question can be asked in the interview"),
-        intention: z.string().describe("The intention of interviewer behind asking this question"),
-        answer: z.string().describe("How to answer this question, what points to cover, what approach to take etc.")
-    })).describe("Technical questions that can be asked in the interview along with their intention and how to answer them"),
-    behavioralQuestions: z.array(z.object({
-        question: z.string().describe("The technical question can be asked in the interview"),
-        intention: z.string().describe("The intention of interviewer behind asking this question"),
-        answer: z.string().describe("How to answer this question, what points to cover, what approach to take etc.")
-    })).describe("Behavioral questions that can be asked in the interview along with their intention and how to answer them"),
-    skillGaps: z.array(z.object({
-        skill: z.string().describe("The skill which the candidate is lacking"),
-        severity: z.enum([ "low", "medium", "high" ]).describe("The severity of this skill gap, i.e. how important is this skill for the job and how much it can impact the candidate's chances")
-    })).describe("List of skill gaps in the candidate's profile along with their severity"),
-    preparationPlan: z.array(z.object({
-        day: z.number().describe("The day number in the preparation plan, starting from 1"),
-        focus: z.string().describe("The main focus of this day in the preparation plan, e.g. data structures, system design, mock interviews etc."),
-        tasks: z.array(z.string()).describe("List of tasks to be done on this day to follow the preparation plan, e.g. read a specific book or article, solve a set of problems, watch a video etc.")
-    })).describe("A day-wise preparation plan for the candidate to follow in order to prepare for the interview effectively"),
-    title: z.string().describe("The title of the job for which the interview report is generated"),
-})
+    matchScore: z.number().min(0).max(100),
 
-async function generateInterviewReport({ resume, selfDescription, jobDescription }) {
+    technicalQuestions: z
+        .array(
+            z.object({
+                question: z.string(),
+                intention: z.string(),
+                answer: z.string()
+            })
+        )
+        .min(5),
+
+    behavioralQuestions: z
+        .array(
+            z.object({
+                question: z.string(),
+                intention: z.string(),
+                answer: z.string()
+            })
+        )
+        .min(5),
+
+    skillGaps: z
+        .array(
+            z.object({
+                skill: z.string(),
+                severity: z.enum(["low", "medium", "high"])
+            })
+        )
+        .min(1),
+
+    preparationPlan: z
+       .array(
+        z.object({
+            day: z.number().int(),
+            focus: z.string(),
+
+            tasks: z.array(
+                z.object({
+                    task: z.string(),
+
+                    status: z.enum([
+                        "not started",
+                        "in progress",
+                        "completed"
+                    ])
+                })
+            )
+        })
+    )
+    .min(7),
+
+    title: z.string()
+});
 
 
-    const prompt = `Generate an interview report for a candidate with the following details:
-                        Resume: ${resume}
-                        Self Description: ${selfDescription}
-                        Job Description: ${jobDescription}
-`
+/*
+|--------------------------------------------------------------------------
+| GEMINI JSON SCHEMA
+|--------------------------------------------------------------------------
+*/
+
+const interviewReportJsonSchema = {
+    type: "object",
+
+    properties: {
+        matchScore: {
+            type: "number",
+            minimum: 0,
+            maximum: 100,
+            description:
+                "A score between 0 and 100 indicating how well the candidate matches the job description."
+        },
+
+        technicalQuestions: {
+            type: "array",
+            minItems: 5,
+
+            items: {
+                type: "object",
+
+                properties: {
+                    question: {
+                        type: "string",
+                        description:
+                            "A technical interview question relevant to the candidate and job."
+                    },
+
+                    intention: {
+                        type: "string",
+                        description:
+                            "What the interviewer wants to evaluate by asking this question."
+                    },
+
+                    answer: {
+                        type: "string",
+                        description:
+                            "Guidance explaining how the candidate should answer the question."
+                    }
+                },
+
+                required: [
+                    "question",
+                    "intention",
+                    "answer"
+                ],
+
+                propertyOrdering: [
+                    "question",
+                    "intention",
+                    "answer"
+                ]
+            }
+        },
+
+        behavioralQuestions: {
+            type: "array",
+            minItems: 5,
+
+            items: {
+                type: "object",
+
+                properties: {
+                    question: {
+                        type: "string",
+                        description:
+                            "A behavioral interview question relevant to the candidate."
+                    },
+
+                    intention: {
+                        type: "string",
+                        description:
+                            "What the interviewer wants to evaluate."
+                    },
+
+                    answer: {
+                        type: "string",
+                        description:
+                            "Guidance explaining how the candidate should answer."
+                    }
+                },
+
+                required: [
+                    "question",
+                    "intention",
+                    "answer"
+                ],
+
+                propertyOrdering: [
+                    "question",
+                    "intention",
+                    "answer"
+                ]
+            }
+        },
+
+        skillGaps: {
+            type: "array",
+            minItems: 1,
+
+            items: {
+                type: "object",
+
+                properties: {
+                    skill: {
+                        type: "string",
+                        description:
+                            "A skill that the candidate needs to improve for the target job."
+                    },
+
+                    severity: {
+                        type: "string",
+                        enum: [
+                            "low",
+                            "medium",
+                            "high"
+                        ],
+                        description:
+                            "The severity of the skill gap."
+                    }
+                },
+
+                required: [
+                    "skill",
+                    "severity"
+                ],
+
+                propertyOrdering: [
+                    "skill",
+                    "severity"
+                ]
+            }
+        },
+
+        preparationPlan: {
+            type: "array",
+            minItems: 7,
+
+            items: {
+                type: "object",
+
+                properties: {
+                    day: {
+                        type: "integer",
+                        description:
+                            "The preparation day number."
+                    },
+
+                    focus: {
+                        type: "string",
+                        description:
+                            "The main topic or focus for that day."
+                    },
+
+                    tasks: {
+    type: "array",
+
+    items: {
+        type: "object",
+
+        properties: {
+            task: {
+                type: "string",
+                description: "Specific preparation task."
+            },
+
+            status: {
+                type: "string",
+                enum: [
+                    "not started",
+                    "in progress",
+                    "completed"
+                ],
+                description: "Task completion status."
+            }
+        },
+
+        required: [
+            "task",
+            "status"
+        ],
+
+        propertyOrdering: [
+            "task",
+            "status"
+        ]
+    },
+
+    description: "Preparation tasks with completion status."
+}
+                },
+
+                required: [
+                    "day",
+                    "focus",
+                    "tasks"
+                ],
+
+                propertyOrdering: [
+                    "day",
+                    "focus",
+                    "tasks"
+                ]
+            }
+        },
+
+        title: {
+            type: "string",
+            description:
+                "A short title for the generated interview preparation report."
+        }
+    },
+
+    required: [
+        "matchScore",
+        "technicalQuestions",
+        "behavioralQuestions",
+        "skillGaps",
+        "preparationPlan",
+        "title"
+    ],
+
+    propertyOrdering: [
+        "matchScore",
+        "technicalQuestions",
+        "behavioralQuestions",
+        "skillGaps",
+        "preparationPlan",
+        "title"
+    ]
+};
+
+
+/*
+|--------------------------------------------------------------------------
+| GENERATE INTERVIEW REPORT
+|--------------------------------------------------------------------------
+*/
+
+async function generateInterviewReport({
+    resume,
+    selfDescription,
+    jobDescription
+}) {
+
+    const prompt = `
+You are an expert technical interviewer and career preparation assistant.
+
+Analyze the candidate's resume, self-description, and target job description.
+
+Generate a complete interview preparation report.
+
+IMPORTANT OUTPUT RULES:
+
+1. technicalQuestions MUST be an array of OBJECTS.
+
+Each object MUST contain exactly these fields:
+
+{
+    "question": "string",
+    "intention": "string",
+    "answer": "string"
+}
+
+Generate at least 5 technical questions.
+
+2. behavioralQuestions MUST be an array of OBJECTS.
+
+Each object MUST contain exactly these fields:
+
+{
+    "question": "string",
+    "intention": "string",
+    "answer": "string"
+}
+
+Generate at least 5 behavioral questions.
+
+3. skillGaps MUST be an array of OBJECTS.
+
+Each object MUST contain:
+
+{
+    "skill": "string",
+    "severity": "low | medium | high"
+}
+
+Generate at least 1 skill gap.
+4. preparationPlan MUST be an array of OBJECTS.
+
+Each object MUST contain:
+
+{
+    "day": number,
+    "focus": "string",
+    "tasks": [
+        {
+            "task": "string",
+            "status": "not started"
+        }
+    ]
+}
+
+Generate a minimum 7-day preparation plan.
+
+Every task MUST be an object.
+
+Each task object MUST contain:
+- "task": the specific preparation activity
+- "status": the task completion status
+
+For a newly generated report, ALWAYS set:
+"status": "not started"
+
+5. DO NOT put plain strings inside technicalQuestions.
+
+6. DO NOT put plain strings inside behavioralQuestions.
+
+7. DO NOT put plain strings inside skillGaps.
+8. DO NOT put plain strings directly inside preparationPlan.tasks.
+
+9. Every item in those arrays MUST be an object with the required fields.
+
+10. Do not invent skills, education, projects, experience, or technologies that are not supported by the resume or self-description.
+
+11. Match the interview questions and skill gaps to the target job description.
+
+12. matchScore must be a number between 0 and 100.
+
+13. Return valid JSON matching the provided schema.
+
+----------------------------------------
+CANDIDATE RESUME
+----------------------------------------
+
+${resume}
+
+----------------------------------------
+CANDIDATE SELF DESCRIPTION
+----------------------------------------
+
+${selfDescription || "Not provided"}
+
+----------------------------------------
+JOB DESCRIPTION
+----------------------------------------
+
+${jobDescription}
+`;
+
+    try {
+
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+
+            contents: prompt,
+
+            config: {
+                responseMimeType: "application/json",
+                responseJsonSchema: interviewReportJsonSchema
+            }
+        });
+
+        /*
+        |--------------------------------------------------------------------------
+        | GET GEMINI RESPONSE
+        |--------------------------------------------------------------------------
+        */
+
+        const result = JSON.parse(response.text);
+
+        /*
+        |--------------------------------------------------------------------------
+        | DEBUG LOG
+        |--------------------------------------------------------------------------
+        */
+
+        console.log(
+            "========== GEMINI INTERVIEW REPORT =========="
+        );
+
+        console.dir(result, {
+            depth: null
+        });
+
+        console.log(
+            "=============================================="
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | VALIDATE RESPONSE USING ZOD
+        |--------------------------------------------------------------------------
+        */
+
+        const validatedResult =
+            interviewReportSchema.parse(result);
+
+        return validatedResult;
+
+    } catch (error) {
+
+        console.error(
+            "Error generating interview report:"
+        );
+
+        console.error(error);
+
+        throw error;
+    }
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| GENERATE PDF FROM HTML
+|--------------------------------------------------------------------------
+*/
+
+async function generatePdfFromHtml(html) {
+
+    const browser = await puppeteer.launch({
+        headless: true,
+        args: [
+            "--no-sandbox",
+            "--disable-setuid-sandbox"
+        ]
+    });
+
+    try {
+
+        const page = await browser.newPage();
+
+        await page.setContent(html, {
+            waitUntil: "networkidle0"
+        });
+
+        const pdfBuffer = await page.pdf({
+            format: "A4",
+
+            printBackground: true,
+
+            margin: {
+                top: "20px",
+                right: "20px",
+                bottom: "20px",
+                left: "20px"
+            }
+        });
+
+        return pdfBuffer;
+
+    } finally {
+
+        await browser.close();
+    }
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| GENERATE RESUME PDF
+|--------------------------------------------------------------------------
+*/
+
+async function generateResumePdf({
+    resume,
+    jobDescription,
+    selfDescription
+}) {
+
+    const resumeSchema = z.object({
+        html: z.string()
+    });
+
+    const resumeJsonSchema = {
+        type: "object",
+
+        properties: {
+            html: {
+                type: "string",
+                description:
+                    "Complete professional HTML resume."
+            }
+        },
+
+        required: ["html"],
+
+        propertyOrdering: ["html"]
+    };
+
+    const prompt = `
+You are an expert professional resume writer.
+
+Create a professional ATS-friendly resume in HTML format.
+
+Use ONLY information available in the candidate resume and self-description.
+
+Do not invent:
+- Companies
+- Jobs
+- Degrees
+- Certifications
+- Skills
+- Projects
+- Achievements
+- Dates
+- Technologies
+
+The resume should have a clean professional layout and be suitable for conversion to PDF.
+
+Target Job Description:
+
+${jobDescription}
+
+Candidate Self Description:
+
+${selfDescription || "Not provided"}
+
+Candidate Resume:
+
+${resume}
+
+Return only the HTML inside the JSON field.
+`;
 
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
+
         contents: prompt,
+
         config: {
             responseMimeType: "application/json",
-            responseSchema: zodToJsonSchema(interviewReportSchema),
+            responseJsonSchema: resumeJsonSchema
         }
-    })
+    });
 
-    return JSON.parse(response.text)
+    const result = JSON.parse(response.text);
 
+    const validatedResult =
+        resumeSchema.parse(result);
 
+    const pdfBuffer =
+        await generatePdfFromHtml(
+            validatedResult.html
+        );
+
+    return pdfBuffer;
 }
 
 
+/*
+|--------------------------------------------------------------------------
+| EXPORTS
+|--------------------------------------------------------------------------
+*/
 
-async function generatePdfFromHtml(htmlContent) {
-    const browser = await puppeteer.launch()
-    const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: "networkidle0" })
-
-    const pdfBuffer = await page.pdf({
-        format: "A4", margin: {
-            top: "20mm",
-            bottom: "20mm",
-            left: "15mm",
-            right: "15mm"
-        }
-    })
-
-    await browser.close()
-
-    return pdfBuffer
-}
-
-async function generateResumePdf({ resume, selfDescription, jobDescription }) {
-
-    const resumePdfSchema = z.object({
-        html: z.string().describe("The HTML content of the resume which can be converted to PDF using any library like puppeteer")
-    })
-
-    const prompt = `Generate resume for a candidate with the following details:
-                        Resume: ${resume}
-                        Self Description: ${selfDescription}
-                        Job Description: ${jobDescription}
-
-                        the response should be a JSON object with a single field "html" which contains the HTML content of the resume which can be converted to PDF using any library like puppeteer.
-                        The resume should be tailored for the given job description and should highlight the candidate's strengths and relevant experience. The HTML content should be well-formatted and structured, making it easy to read and visually appealing.
-                        The content of resume should be not sound like it's generated by AI and should be as close as possible to a real human-written resume.
-                        you can highlight the content using some colors or different font styles but the overall design should be simple and professional.
-                        The content should be ATS friendly, i.e. it should be easily parsable by ATS systems without losing important information.
-                        The resume should not be so lengthy, it should ideally be 1-2 pages long when converted to PDF. Focus on quality rather than quantity and make sure to include all the relevant information that can increase the candidate's chances of getting an interview call for the given job description.
-                    `
-
-    const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: zodToJsonSchema(resumePdfSchema),
-        }
-    })
-
-
-    const jsonContent = JSON.parse(response.text)
-
-    const pdfBuffer = await generatePdfFromHtml(jsonContent.html)
-
-    return pdfBuffer
-
-}
-
-module.exports = { generateInterviewReport, generateResumePdf }
+module.exports = {
+    generateInterviewReport,
+    generateResumePdf
+};
