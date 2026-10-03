@@ -1,4 +1,5 @@
-const pdfParse = require("pdf-parse")
+const { CanvasFactory } = require("pdf-parse/worker")
+const { PDFParse } = require("pdf-parse")
 const { generateInterviewReport, generateResumePdf } = require("../services/ai.service")
 const interviewReportModel = require("../models/interviewReport.model")
 
@@ -9,79 +10,63 @@ const interviewReportModel = require("../models/interviewReport.model")
  * @description Controller to generate interview report based on user self description, resume and job description.
  */
 async function generateInterViewReportController(req, res) {
-
     try {
-
-        console.log("========== INTERVIEW REQUEST ==========")
-        console.log("BODY:", req.body)
-        console.log("FILE:", req.file)
-
         const { selfDescription, jobDescription } = req.body
 
-        // Job description is required
-        if (!jobDescription || !jobDescription.trim()) {
+        if (!jobDescription) {
             return res.status(400).json({
                 message: "Job description is required."
             })
         }
 
-        // Resume OR self-description is required
-        if (!req.file && (!selfDescription || !selfDescription.trim())) {
+        if (!req.file && !selfDescription) {
             return res.status(400).json({
-                message: "Please upload a resume or provide a self-description."
+                message: "Please provide either a resume or self description."
             })
         }
 
-        // Resume is optional
         let resumeText = ""
 
-        // Only parse PDF when a resume was actually uploaded
         if (req.file) {
-
             if (req.file.mimetype !== "application/pdf") {
                 return res.status(400).json({
                     message: "Only PDF resumes are supported."
                 })
             }
 
-            const resumeContent = await (
-                new pdfParse.PDFParse(
-                    Uint8Array.from(req.file.buffer)
-                )
-            ).getText()
+            const parser = new PDFParse({
+                data: Uint8Array.from(req.file.buffer),
+                CanvasFactory
+            })
+
+            const resumeContent = await parser.getText()
 
             resumeText = resumeContent.text || ""
+
+            await parser.destroy()
         }
 
-        console.log("Resume text length:", resumeText.length)
-        console.log(
-            "Self description length:",
-            selfDescription?.length || 0
-        )
-
-        // Generate AI interview report
         const interViewReportByAi = await generateInterviewReport({
             resume: resumeText,
-            selfDescription: selfDescription || "",
+            selfDescription,
             jobDescription
         })
 
-        // Save report
         const interviewReport = await interviewReportModel.create({
             user: req.user.userId,
             resume: resumeText,
-            selfDescription: selfDescription || "",
+            selfDescription,
             jobDescription,
             ...interViewReportByAi
         })
 
         return res.status(201).json({
             message: "Interview report generated successfully.",
+            _id: interviewReport._id,
             interviewReport
         })
 
     } catch (error) {
-
         console.error(
             "Error generating interview report:",
             error

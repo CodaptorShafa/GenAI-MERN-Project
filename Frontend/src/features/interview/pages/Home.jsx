@@ -14,8 +14,15 @@ const Home = () => {
 
     const handleGenerateReport = async () => {
         const resumeFile = resumeInputRef.current.files[ 0 ]
-        const data = await generateReport({ jobDescription, selfDescription, resumeFile })
-        navigate(`/interview/${data._id}`)
+        const data = await generateReport({
+    jobDescription,
+    selfDescription,
+    resumeFile
+})
+
+if (data?._id) {
+    navigate(`/interview/${data._id}`)
+}
     }
 
     if (loading) {
@@ -123,7 +130,7 @@ const Home = () => {
             </div>
 
             {/* Recent Reports List */}
-            {reports.length > 0 && (
+            {Array.isArray(reports) && reports.length > 0 &&(
                 <section className='recent-reports'>
                     <h2>My Recent Interview Plans</h2>
                     <ul className='reports-list'>

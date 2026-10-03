@@ -15,20 +15,31 @@ export const useInterview = () => {
 
     const { loading, setLoading, report, setReport, reports, setReports } = context
 
-    const generateReport = async ({ jobDescription, selfDescription, resumeFile }) => {
-        setLoading(true)
-        let response = null
-        try {
-            response = await generateInterviewReport({ jobDescription, selfDescription, resumeFile })
-            setReport(response.interviewReport)
-        } catch (error) {
-            console.log(error)
-        } finally {
-            setLoading(false)
-        }
+ const generateReport = async ({
+    jobDescription,
+    selfDescription,
+    resumeFile
+}) => {
+    setLoading(true)
 
-        return response.interviewReport
+    try {
+        const response = await generateInterviewReport({
+            jobDescription,
+            selfDescription,
+            resumeFile
+        })
+
+        setReport(response?.interviewReport || null)
+
+        return response?.interviewReport || null
+
+    } catch (error) {
+        console.error("Error generating interview report:", error)
+        return null
+    } finally {
+        setLoading(false)
     }
+}
 
     const getReportById = async (interviewId) => {
         setLoading(true)
@@ -44,20 +55,28 @@ export const useInterview = () => {
         return response.interviewReport
     }
 
-    const getReports = async () => {
-        setLoading(true)
-        let response = null
-        try {
-            response = await getAllInterviewReports()
-            setReports(response.interviewReports)
-        } catch (error) {
-            console.log(error)
-        } finally {
-            setLoading(false)
-        }
+   const getReports = async () => {
+    setLoading(true)
 
-        return response.interviewReports
+    try {
+        const response = await getAllInterviewReports()
+
+        setReports(
+            Array.isArray(response?.interviewReports)
+                ? response.interviewReports
+                : []
+        )
+
+        return response?.interviewReports || []
+
+    } catch (error) {
+        console.error("Error fetching interview reports:", error)
+        setReports([])
+        return []
+    } finally {
+        setLoading(false)
     }
+}
 
     const getResumePdf = async (interviewReportId) => {
         setLoading(true)
