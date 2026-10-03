@@ -23,7 +23,12 @@ async function registerUserController(req, res) {
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await userModel.create({ username, email, password: hashedPassword });
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1d' });
-    res.cookie('token', token)
+    res.cookie("token", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    maxAge: 24 * 60 * 60 * 1000
+});
     res.status(201).json({ message: 'User registered successfully', user: { id: user._id, username: user.username, email: user.email }});
 }
 /**
@@ -33,10 +38,6 @@ async function registerUserController(req, res) {
  */
 async function loginUserController(req, res) {
     const {email, password } = req.body;
-     console.log("REQ.BODY:", req.body);
-    console.log("EMAIL:", email);
-    console.log("EMAIL TYPE:", typeof email);
-    console.log("PASSWORD:", password);
     const user = await userModel.findOne({ email});
     if(!user){
         return res.status(400).json({ message: 'User not found' });
@@ -46,7 +47,12 @@ async function loginUserController(req, res) {
         return res.status(400).json({ message: 'Invalid password' });
     }
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1d' });
-    res.cookie('token', token);
+    res.cookie("token", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    maxAge: 24 * 60 * 60 * 1000
+});
     res.status(200).json({ message: 'Login successful', user: { id: user._id, username: user.username, email: user.email }});
 }
 /**
@@ -60,7 +66,11 @@ async function logoutUserController(req, res) {
         return res.status(400).json({ message: 'Token is required' });
     }
     await tokenBlacklist.create({ token });
-    res.clearCookie('token');
+    res.clearCookie("token", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax"
+});
     res.status(200).json({ message: 'Logout successful' });
 }
 /**
