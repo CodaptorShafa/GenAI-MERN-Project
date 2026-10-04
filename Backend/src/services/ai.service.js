@@ -599,16 +599,62 @@ ${resume}
 Return only the HTML inside the JSON field.
 `;
 
-    const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+    let response;
 
-        contents: prompt,
+    const maxRetries = 3;
 
-        config: {
-            responseMimeType: "application/json",
-            responseJsonSchema: resumeJsonSchema
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+
+        try {
+
+            response = await ai.models.generateContent({
+                model: "gemini-3-flash-preview",
+
+                contents: prompt,
+
+                config: {
+                    responseMimeType: "application/json",
+                    responseJsonSchema: resumeJsonSchema
+                }
+            });
+
+            break;
+
+        } catch (error) {
+
+            const status =
+                error?.status ||
+                error?.error?.code;
+
+            const retryable =
+                status === 503 ||
+                status === 429 ||
+                status === 500;
+
+            console.error(
+                `Gemini resume generation failed. ` +
+                `Attempt ${attempt}/${maxRetries}. ` +
+                `Status: ${status}`
+            );
+
+            if (!retryable || attempt === maxRetries) {
+                throw error;
+            }
+
+            const delay = Math.min(
+                2000 * Math.pow(2, attempt - 1),
+                8000
+            );
+
+            console.log(
+                `Retrying Gemini request in ${delay}ms...`
+            );
+
+            await new Promise(resolve =>
+                setTimeout(resolve, delay)
+            );
         }
-    });
+    }
 
     const result = JSON.parse(response.text);
 
