@@ -1,3 +1,5 @@
+const chromium = require("@sparticuz/chromium");
+const puppeteer = require("puppeteer-core");
 const { GoogleGenAI } = require("@google/genai");
 const { z } = require("zod");
 const ai = new GoogleGenAI({
@@ -490,46 +492,64 @@ ${jobDescription}
 |--------------------------------------------------------------------------
 */
 
+
+
 async function generatePdfFromHtml(html) {
-
-    const { default: puppeteer } = await import("puppeteer");
-
-    const browser = await puppeteer.launch({
-        headless: true,
-        args: [
-            "--no-sandbox",
-            "--disable-setuid-sandbox"
-        ]
-    });
+    let browser;
 
     try {
+        const executablePath = await chromium.executablePath();
+
+        console.log("[PDF DEBUG] Node version:", process.version);
+        console.log(
+            "[PDF DEBUG] Puppeteer version:",
+            require("puppeteer-core/package.json").version
+        );
+        console.log(
+            "[PDF DEBUG] Chromium package version:",
+            require("@sparticuz/chromium/package.json").version
+        );
+        console.log("[PDF DEBUG] Executable path:", executablePath);
+
+        browser = await puppeteer.launch({
+            args: chromium.args,
+            defaultViewport: chromium.defaultViewport,
+            executablePath,
+            headless: true,
+        });
+
+        console.log("[PDF DEBUG] Browser launched successfully");
 
         const page = await browser.newPage();
 
         await page.setContent(html, {
-            waitUntil: "networkidle0"
+            waitUntil: "networkidle0",
+            timeout: 30000,
         });
 
         const pdfBuffer = await page.pdf({
             format: "A4",
-
             printBackground: true,
-
             margin: {
                 top: "20px",
                 right: "20px",
                 bottom: "20px",
-                left: "20px"
-            }
+                left: "20px",
+            },
         });
 
-        return pdfBuffer;
-
+        return Buffer.from(pdfBuffer);
+    } catch (error) {
+        console.error("[PDF DEBUG] PDF generation failed:", error);
+        throw error;
     } finally {
-
-        await browser.close();
+        if (browser) {
+            await browser.close();
+        }
     }
 }
+
+
 
 
 /*
