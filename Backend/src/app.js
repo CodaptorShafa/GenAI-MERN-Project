@@ -12,12 +12,24 @@ app.use(cookieParser());
 const allowedOrigin =
     process.env.FRONTEND_URL || "http://localhost:5173";
 
-app.use(
-    cors({
-        origin: allowedOrigin,
-        credentials: true,
-    })
-);
+app.use(cors({
+    origin: function (origin, callback) {
+        // Allow requests without an Origin header, such as server-to-server calls.
+        if (!origin) {
+            return callback(null, true);
+        }
+
+        const isVercelDeployment =
+            /^https:\/\/gen-ai-mern-project-frontend(?:-[a-z0-9-]+)?-shafaullah-siddiqui\.vercel\.app$/.test(origin);
+
+        if (allowedOrigins.includes(origin) || isVercelDeployment) {
+            return callback(null, true);
+        }
+
+        return callback(new Error("Not allowed by CORS: " + origin));
+    },
+    credentials: true,
+}));
 
 /*
 |--------------------------------------------------------------------------
